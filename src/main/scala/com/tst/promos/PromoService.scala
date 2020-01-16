@@ -7,10 +7,29 @@ object PromoService {
 
   private val logger = Logger("PromoService")
 
+  /**
+   * Required API
+   *
+   * Return all Promotion combinations with the given promotion code
+   *
+   * @param promotionCode promotion code to find combinations for
+   * @param allPromotions Sequence of all possible promotions
+   * @return all possible combinations
+   */
   def combinablePromotions(promotionCode: String,
                            allPromotions: Seq[Promotion]): Seq[PromotionCombo] = {
     getPromotions(allPromotions, Some(promotionCode))
   }
+
+  /**
+   * Required API
+   *
+   * Return all possible combinations of Promotions
+   *
+   * @param allPromotions Sequence of all possible promotions
+   * @return all possible combinations
+   */
+  def allCombinablePromotions(allPromotions: Seq[Promotion]): Seq[PromotionCombo] = getPromotions(allPromotions)
 
   /**
    *
@@ -53,7 +72,7 @@ object PromoService {
       case Some(_) if existing.nonEmpty =>
         allPromotions.filterNot(x => x.code == existing.last.code)
 
-      case Some(_) if existing.isEmpty =>  // promotionCode query, but not found in list of Promotions
+      case Some(_) if existing.isEmpty => // promotionCode query, but not found in list of Promotions
         allPromotions.takeRight(allPromotions.length - allPromotions.indexOf(lastOfPath) - 1)
 
       case None => allPromotions.takeRight(allPromotions.length - allPromotions.indexOf(lastOfPath) - 1)
@@ -72,7 +91,16 @@ object PromoService {
     nextMatches.toList ++ (existing :: Nil)
   }
 
-
+  /**
+   * The public API methods delegate to this unified API in order to maximize code reuse.
+   *
+   * Combines capabilities of both public API methods. All combinations can be found or those based on
+   * a given promotion code
+   *
+   * @param allPromotions All known Promotions
+   * @param promotionCode Optional promotion code to base search on
+   * @return All possible combinations
+   */
   private def getPromotions(allPromotions: Seq[Promotion], promotionCode: Option[String] = None): Seq[PromotionCombo] = {
 
     // Start Execution!
@@ -118,7 +146,5 @@ object PromoService {
 
     })
   }
-
-  def allCombinablePromotions(allPromotions: Seq[Promotion]): Seq[PromotionCombo] = getPromotions(allPromotions)
 
 }

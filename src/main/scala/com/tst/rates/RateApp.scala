@@ -8,6 +8,13 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.util.{Failure, Success}
 
+/**
+ * Main Class for Rates
+ *
+ * I've purposefully written this in an async fashion as this is how it would be used
+ * in a real-work application
+ *
+ */
 object RateApp extends App {
 
   // Asynchronously load data

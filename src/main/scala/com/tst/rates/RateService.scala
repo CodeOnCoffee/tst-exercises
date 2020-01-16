@@ -24,14 +24,29 @@ object RateService {
     CabinPrice("CB", "S2", 270.00),
   )
 
+  /**
+   * Provide a list of Rates in the future
+   * @return Future of Rates
+   */
   def fetchRates(): Future[List[Rate]] = Future {
     fixtureRates
   }
 
+  /**
+   * Provide a list of Cabin Prices in the future
+   * @return Future of Rates
+   */
   def fetchCabinPrices(): Future[List[CabinPrice]] = Future {
     cabinPrices
   }
 
+  /**
+   * Find best prices for Groups
+   *
+   * @param rates Sequence of Rates to search over
+   * @param prices Sequence of Cabin Prices
+   * @return Best Group Prices
+   */
   def getBestGroupPrices(rates: Seq[Rate], prices: Seq[CabinPrice]): Seq[BestGroupPrice] = {
 
     // get distinct cabin codes and rate groups

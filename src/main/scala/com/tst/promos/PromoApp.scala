@@ -4,6 +4,9 @@ import com.tst.promos.PromoService._
 
 import scala.language.postfixOps
 
+/**
+ * Main Class for Promos
+ */
 object PromoApp extends App {
   val promos = List(
     Promotion("P1", Seq("P3")),
