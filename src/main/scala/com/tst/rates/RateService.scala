@@ -26,6 +26,7 @@ object RateService {
 
   /**
    * Provide a list of Rates in the future
+   *
    * @return Future of Rates
    */
   def fetchRates(): Future[List[Rate]] = Future {
@@ -34,6 +35,7 @@ object RateService {
 
   /**
    * Provide a list of Cabin Prices in the future
+   *
    * @return Future of Rates
    */
   def fetchCabinPrices(): Future[List[CabinPrice]] = Future {
@@ -43,7 +45,7 @@ object RateService {
   /**
    * Find best prices for Groups
    *
-   * @param rates Sequence of Rates to search over
+   * @param rates  Sequence of Rates to search over
    * @param prices Sequence of Cabin Prices
    * @return Best Group Prices
    */

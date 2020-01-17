@@ -5,10 +5,9 @@ import com.typesafe.scalalogging.Logger
 
 object PromoService {
 
-  private val logger = Logger("PromoService")
-
   // The PromotionCombo Case Class really isn't useful for us internally. Instead we'll use a Sequence of Promotion
   private type PromoPath = List[Promotion]
+  private val logger = Logger("PromoService")
 
   /**
    * Required API
@@ -21,7 +20,16 @@ object PromoService {
    */
   def combinablePromotions(promotionCode: String,
                            allPromotions: Seq[Promotion]): Seq[PromotionCombo] = {
-    getPromotions(allPromotions, Some(promotionCode))
+    if (allPromotions.exists(p => p.code == promotionCode)) {
+      val promotionCombos = getPromotions(allPromotions, Some(promotionCode))
+      // The expectation is for the given promotionCode to be at the start, reorder our combos
+      promotionCombos.map(combo => {
+        combo.copy(promotionCode +: combo.promotionCodes.filterNot(_ == promotionCode))
+      })
+    } else {
+      logger.error("given Promotion Code (%s) does not exist in Promotion List")
+      Nil
+    }
   }
 
   /**
@@ -48,54 +56,49 @@ object PromoService {
    */
   private def getPromotions(allPromotions: Seq[Promotion], promotionCode: Option[String] = None): Seq[PromotionCombo] = {
 
-    // Some behaviors change if we're limiting combos to those starting with a given promotion code
-    val isPromotionCodeQuery: Boolean = promotionCode.nonEmpty
-
-    // Starting point
-    val startingQuery: PromoPath = if (isPromotionCodeQuery) {
-      val promotion = allPromotions.filter(x => x.code == promotionCode.get).toList
-      if(promotion.isEmpty){
-        logger.error("Given Promotion Code not found in the system.")
-        return Nil
-      }
-      promotion
-    } else {
-      // Full query has no start
-      Nil
+    if (allPromotions.isEmpty) {
+      return Nil
     }
 
-    val rawCombinations: List[PromoPath] = getCombinations(allPromotions.toList, promotionCode, startingQuery)
+    // Some behaviors change if we're limiting combos to those starting with a given promotion code
+    val allMode: Boolean = promotionCode.isEmpty
+
+    // if we're doing a promotion code based query this will return the Promotion matching the code
+    lazy val rootPromotion = (for {
+      code <- promotionCode
+      promotion <- allPromotions.find(_.code == code)
+    } yield promotion).get
+
+    // Call recursive search function to find all possible combinations
+    val rawCombinations: List[PromoPath] = getCombinations(allPromotions.toList, allMode)
+
+    // If were not querying all, filter out all matches not containing the given root promotion
+    val filteredCombinations = rawCombinations.filter(x => allMode || x.contains(rootPromotion))
 
     // So far we've been working with collections of Promotion, map to PromotionCombo now.
-    // At the same time sort the tail of all combos (matches expectations)
-    val combos: Seq[PromotionCombo] = rawCombinations.map(x => PromotionCombo(x.map(y => y.code) match {
-        // promotionCode searches always have the promotionCode first regardless of the rest of the promo IDs
-      case head :: tail if promotionCode.nonEmpty => head :: tail.sorted
-      case path => path.sorted
-    }))
+    val combos: Seq[PromotionCombo] = filteredCombinations.map(x => PromotionCombo(x.map(y => y.code).sorted))
 
-    // We only care about combinations of 2 or more, our naive algorithm returns single Promo combos
-    val combosFiltered: Seq[PromotionCombo] = combos.filter(c => c.promotionCodes.length > 1)
-
-    // If this is a search based on a promotionCode then duplicates can seep in
-    val distinctCombos = combosFiltered.distinct
+    // If this is not an all search then duplicates can seep in
+    val distinctCombos = if (!allMode) {
+      combos.distinct
+    } else {
+      combos
+    }
 
     // Finally, remove any paths which are contained in longer paths (better promo combos)
     distinctCombos.filterNot(combo => {
-
-      // Diff promos with others, if the difference removes all of our promos then the other is greater
       combos.filterNot(other => combo == other).exists(other => {
         combo.promotionCodes.diff(other.promotionCodes).isEmpty
       })
-
     })
+
   }
 
 
   /**
    *
-   * Recursive function which transverses a diagonal half of a Cartesian product,
-   * finding any paths which do not violate exclusions
+   * Recursive function which transverses a diagonal half of a Cartesian product (in allMode),
+   * finding any paths which do not violate exclusions.
    *
    * It's actually more optimized than shown below as exclusions will skip ahead
    *
@@ -105,59 +108,54 @@ object PromoService {
    * 45
    * 5
    *
-   * Actual Example:
-   *
-   * existing combo: P2
-   *    searching: P3, P4, P5   (Note P1 and P2 were skipped)
-   * combo: P2, P3
-   *    searching: P4, P5
-   *    (P2 excluded P4 and P5)
-   * execution ends with the following Combos: (P2), (P2, P3)
-   *
    * @param allPromotions all promotions
-   * @param promotionCode promotion code to base the search on
+   * @param allMode       flag indicating type of query
    * @param existing      parent combination
    * @param level         used for keeping track of recursion for debugging, no functional use
    * @return all derivative combos based on the given existing base
    */
   private def getCombinations(allPromotions: PromoPath,
-                              promotionCode: Option[String],
+                              allMode: Boolean = false,
                               existing: PromoPath = Nil,
                               level: Int = 0): List[PromoPath] = {
 
     logger.debug("level %d - %s".format(level, existing.map(x => x.code)))
 
+    val existing_blocks = existing.flatMap(_.notCombinableWith)
 
-    val lastOfPath = if (existing.isEmpty) 0 else existing.last
+    /**
+     * Starting with all possible promotions, filter out those we cannot combine with.
+     * Additional performance improvement for "allMode"
+     */
+    val next = allPromotions
+      // Remove ones already in the combo
+      .diff(existing)
+      // Remove Promotions the existing combo blocks
+      .filterNot(x => existing_blocks.contains(x.code))
+      // Remove Promotions that would themselves conflict with the existing Combo
+      .filterNot(x => x.notCombinableWith.intersect(existing.map(_.code)).nonEmpty)
+      // The last is a performance improvement for "all" query.
+      .filterNot(x => allMode && existing.lastOption.nonEmpty && allPromotions.indexOf(x) < allPromotions.indexOf(existing.last))
 
-    // The next candidates differ depending on whether or not we're in promotionCode mode
-    // "All" Query is better optimized whereas "promotion code"
-    val next = promotionCode match {
-      case Some(_) if existing.nonEmpty =>
-        allPromotions.filterNot(_ == lastOfPath)
-      case None => allPromotions.takeRight(allPromotions.length - allPromotions.indexOf(lastOfPath) - 1)
+    logger.debug("\t next %s".format(next.map(x => x.code)))
+
+    if (next.isEmpty) {
+      // we're done here
+      return existing :: Nil
     }
 
-
-
-    logger.debug("\t trying next %s".format(next.map(x => x.code)))
-
-    val nextMatches: Seq[PromoPath] = next.flatMap(n => {
-      val existing_blocks = existing.flatMap(_.notCombinableWith)
-      if (existing.contains(n) || existing_blocks.contains(n.code) || n.notCombinableWith.intersect(existing.map(e => e.code)).nonEmpty) {
-        Nil
-      } else {
-        getCombinations(allPromotions, promotionCode, existing ::: n :: Nil, level + 1)
-      }
+    // Recurse further down with new matches
+    val nextMatches = next.flatMap(n => {
+      getCombinations(allPromotions, allMode, existing ::: n :: Nil, level + 1)
     })
 
-    val finalMatches = nextMatches.toList match {
-      case Nil =>  existing :: Nil // no additional matches found, return existing
-      case results => results
+    val finalCombosForIteration = nextMatches match {
+      case Nil => existing :: Nil   // no additional matches found, return existing
+      case results => results       // Longer combos found, return those
     }
 
     // Consumer only cares about combinations of 2 or more
-    finalMatches.filter(_.length > 1)
+    finalCombosForIteration.filter(_.length > 1)
   }
 
 }
