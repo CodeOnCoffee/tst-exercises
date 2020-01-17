@@ -8,6 +8,7 @@ import scala.language.postfixOps
  * Main Class for Promos
  */
 object PromoApp extends App {
+
   val promos = List(
     Promotion("P1", Seq("P3")),
     Promotion("P2", Seq("P4", "P5")),
@@ -15,6 +16,8 @@ object PromoApp extends App {
     Promotion("P4", Seq("P2")),
     Promotion("P5", Seq("P2")),
   )
+
+  // Switch on command
   args.toList match {
     case "Promos" :: Nil =>
       val all = allCombinablePromotions(promos)
@@ -26,6 +29,7 @@ object PromoApp extends App {
       println("Combos for %s:".format(id))
       println(all)
 
+    case _ => println("Unknown Command")
   }
 
 }

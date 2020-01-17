@@ -50,8 +50,8 @@ object RateService {
   def getBestGroupPrices(rates: Seq[Rate], prices: Seq[CabinPrice]): Seq[BestGroupPrice] = {
 
     // get distinct cabin codes and rate groups
-    val cabinCodes = prices.map(price => price.cabinCode).distinct
-    val rateGroups = rates.map(rate => rate.rateGroup).distinct
+    val cabinCodes = prices.map(_.cabinCode).distinct
+    val rateGroups = rates.map(_.rateGroup).distinct
 
     // Create cartesian product
     val crossProduct = for {
@@ -72,7 +72,6 @@ object RateService {
         ).minByOption(_.price)
 
         bestRate.map(rate => BestGroupPrice(cabinCode, rate.rateCode, rate.price, rateGroup))
-
     }
 
     bestPrices
