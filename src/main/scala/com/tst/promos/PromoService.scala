@@ -70,7 +70,7 @@ object PromoService {
     } yield promotion).get
 
     // Call recursive search function to find all possible combinations
-    val rawCombinations: List[PromoPath] = getCombinations(allPromotions.toList, allMode)
+    val rawCombinations: List[PromoPath] = allPromotions.toList.flatMap(p => getCombinations(allPromotions.toList, allMode, p :: Nil))
 
     // If were not querying all, filter out all matches not containing the given root promotion
     val filteredCombinations = rawCombinations.filter(x => allMode || x.contains(rootPromotion))
@@ -93,7 +93,6 @@ object PromoService {
     })
 
   }
-
 
   /**
    *
@@ -139,23 +138,10 @@ object PromoService {
 
     logger.debug("\t next %s".format(next.map(x => x.code)))
 
-    if (next.isEmpty) {
-      // we're done here
-      return existing :: Nil
-    }
-
     // Recurse further down with new matches
-    val nextMatches = next.flatMap(n => {
+    existing :: next.flatMap(n => {
       getCombinations(allPromotions, allMode, existing ::: n :: Nil, level + 1)
     })
-
-    val finalCombosForIteration = nextMatches match {
-      case Nil => existing :: Nil   // no additional matches found, return existing
-      case results => results       // Longer combos found, return those
-    }
-
-    // Consumer only cares about combinations of 2 or more
-    finalCombosForIteration.filter(_.length > 1)
   }
 
 }
