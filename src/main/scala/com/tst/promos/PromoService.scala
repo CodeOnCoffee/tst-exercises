@@ -2,6 +2,8 @@ package com.tst.promos
 
 import com.typesafe.scalalogging.Logger
 
+import scala.annotation.tailrec
+
 
 object PromoService {
 
@@ -70,10 +72,10 @@ object PromoService {
     } yield promotion).get
 
     // Call recursive search function to find all possible combinations
-    val rawCombinations: List[PromoPath] = allPromotions.toList.flatMap(p => getCombinations(allPromotions.toList, allMode, p :: Nil))
+    val rawCombinations = getCombinations(allPromotions.toList, allMode, Transversal(candidates = allPromotions.toList.map(p => p :: Nil), terminalPaths = Nil))
 
     // If were not querying all, filter out all matches not containing the given root promotion
-    val filteredCombinations = rawCombinations.filter(x => allMode || x.contains(rootPromotion))
+    val filteredCombinations = rawCombinations.terminalPaths.filter(x => allMode || x.contains(rootPromotion))
 
     // So far we've been working with collections of Promotion, map to PromotionCombo now.
     val combos: Seq[PromotionCombo] = filteredCombinations.map(x => PromotionCombo(x.map(y => y.code).sorted))
@@ -109,39 +111,59 @@ object PromoService {
    *
    * @param allPromotions all promotions
    * @param allMode       flag indicating type of query
-   * @param existing      parent combination
+   * @param transversal   Bundle of paths for this iteration, hold candidates and results
    * @param level         used for keeping track of recursion for debugging, no functional use
    * @return all derivative combos based on the given existing base
    */
+  @tailrec
   private def getCombinations(allPromotions: PromoPath,
                               allMode: Boolean = false,
-                              existing: PromoPath = Nil,
-                              level: Int = 0): List[PromoPath] = {
+                              transversal: Transversal,
+                              level: Int = 0): Transversal = {
 
-    logger.debug("level %d - %s".format(level, existing.map(x => x.code)))
+    logger.debug("level %d - %s".format(level, transversal.candidates))
 
-    val existing_blocks = existing.flatMap(_.notCombinableWith)
+    var terminalPaths = transversal.terminalPaths
+    var candidates: List[PromoPath] = Nil
 
-    /**
-     * Starting with all possible promotions, filter out those we cannot combine with.
-     * Additional performance improvement for "allMode"
-     */
-    val next = allPromotions
-      // Remove ones already in the combo
-      .diff(existing)
-      // Remove Promotions the existing combo blocks
-      .filterNot(x => existing_blocks.contains(x.code))
-      // Remove Promotions that would themselves conflict with the existing Combo
-      .filterNot(x => x.notCombinableWith.intersect(existing.map(_.code)).nonEmpty)
-      // The last is a performance improvement for "all" query.
-      .filterNot(x => allMode && existing.lastOption.nonEmpty && allPromotions.indexOf(x) < allPromotions.indexOf(existing.last))
+    transversal.candidates.foreach(existing => {
+      val existing_blocks = existing.flatMap(_.notCombinableWith)
 
-    logger.debug("\t next %s".format(next.map(x => x.code)))
+      /**
+       * Starting with all possible promotions, filter out those we cannot combine with.
+       * Additional performance improvement for "allMode"
+       */
+      val next = allPromotions
+        // Remove ones already in the combo
+        .diff(existing)
+        // Remove Promotions the existing combo blocks
+        .filterNot(x => existing_blocks.contains(x.code))
+        // Remove Promotions that would themselves conflict with the existing Combo
+        .filterNot(x => x.notCombinableWith.intersect(existing.map(_.code)).nonEmpty)
+        // The last is a performance improvement for "all" query.
+        .filterNot(x => allMode && existing.lastOption.nonEmpty && allPromotions.indexOf(x) < allPromotions.indexOf(existing.last))
+
+      logger.debug("\t next %s".format(next.map(x => x.code)))
+      next match {
+        case Nil => terminalPaths = existing :: terminalPaths
+        case paths => candidates = paths.map(p => existing ::: p :: Nil) ::: candidates
+      }
+    })
 
     // Recurse further down with new matches
-    existing :: next.flatMap(n => {
-      getCombinations(allPromotions, allMode, existing ::: n :: Nil, level + 1)
-    })
+    if (candidates.isEmpty) {
+      Transversal(candidates = Nil, terminalPaths = terminalPaths)
+    } else {
+      getCombinations(allPromotions, allMode, Transversal(candidates = candidates, terminalPaths = terminalPaths), level + 1)
+    }
   }
+
+  /**
+   * Simple bundle for the iterative search function
+   *
+   * @param candidates    possible paths for next iteration
+   * @param terminalPaths all currently found paths
+   */
+  private case class Transversal(candidates: List[PromoPath], terminalPaths: List[PromoPath])
 
 }
